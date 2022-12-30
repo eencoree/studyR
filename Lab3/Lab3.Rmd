@@ -1,0 +1,210 @@
+---
+title: "Лабораторная работа №3"
+author: "Реутов Александр"
+date: "2022-12-29"
+output: html_document
+---
+#### Задача 1
+### 1. Постановка задачи
+Дан файл с данными ExpImp.RData. Необходимо отобразить суммарные значения экспорта и импорта по субъектам федерации, находящимся в Центральном федеральном округе, в виде столбчатой диаграммы. Экспорт и импорт обозначить разными цветами и сделать второй график, наложив столбцы экспорта и импорта один на другой и подписав значения разниц между экспортом и импортом.
+
+### 2. Работа с данными
+Загрузим данные и запишем в переменную data. Также подключим необходимые библиотеки
+
+```{r warning=FALSE}
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+load("C:/Users/reuto/Documents/R_lab3/ExpImp.RData")
+data <- ExpImp
+```
+
+Некоторые колонки содержат строковый тип, но определяют числа, поэтому преобразуем все строковые записи в double и уберем Nan, получающийся от прочерков
+```{r warning=FALSE}
+for (i in 2:length(names(data))) {
+  data[[i]] <- as.double(data[[i]])
+}
+data <- drop_na(data)
+```
+
+Найдем индексы тех строк, название региона которых содержит "федеральный округ".
+Явно удалим из таблицы те, записи, что идут после второго индекса, так как соответствуют уже не Центральному федеральному округу.
+
+```{r warning=FALSE}
+district <- grep('федеральный округ', data$Регион)
+data <- data[-c(17:74), ]
+```
+
+Оставим только те записи, что соответствуют субъектам.
+```{r warning=FALSE}
+filt <- !str_detect(data$Регион, 'Российская Федерация|федеральный округ')
+data <- filter(data, filt)
+```
+
+Выберем отдельно записи с экспортом и импортом, посчитаем сумму значений каждого и разницу между суммой экспорта и суммой импорта
+```{r warning=FALSE}
+export <- select_at(data, vars(matches("Экспорт")))
+import <- select_at(data, vars(matches("Импорт")))
+export$Total_Sum <- rowSums(export, na.rm = TRUE)
+import$Total_Sum <- rowSums(import, na.rm = TRUE)
+dif <- export$Total_Sum - import$Total_Sum
+```
+
+Заготовка для второго подзадания:
+```{r warning=FALSE}
+data2 <- data
+```
+
+Напишем функцию g_plot, которая принимает на вход flag_s (= 0 или 1 для первого и второго графика соответственно)
+Добавим в общую таблицу посчитанные значения и оставим следующие столбцы: "Регион", "СумЭкспорт", "СумИмпорт","Разница"
+```{r warning=FALSE}
+data$СумЭкспорт <- export$Total_Sum
+data$СумИмпорт <- import$Total_Sum
+data$Разница <- dif
+data <- data[,c("Регион", "СумЭкспорт", "СумИмпорт","Разница")]
+```
+
+Приведем таблицу к удобному виду с помощью pivot_longer. Новая колонка будет содержать экспорт и импорт вместе и их значения в млн. $(вторая колонка). Просуммируем значения по каждому субъекту.
+```{r warning=FALSE}
+data <- data%>%pivot_longer(names_to = "Экспорт+Импорт", values_to = "млн. $", СумЭкспорт:СумИмпорт)
+region_sum <- data %>% group_by(Регион, `Экспорт+Импорт`)%>% summarise(total_sum = sum(`млн. $`), total_dif = `Разница`, .groups = 'drop')
+```
+
+Построим график, отражающий по отдельности цветами экспорт и импорт, а также численно их разницу
+```{r warning=FALSE}
+region_sum |>
+    ggplot(mapping = aes(x = Регион, y = total_sum, fill = `Экспорт+Импорт`)) +
+    geom_col(color = 'black', size = 0.3, position = 'stack',alpha=0.5) +
+    ggtitle("Разница между импортом и экспортом")+ 
+    ylab('млн. $') + coord_flip() +
+    geom_text(aes(y=300000, label = `total_dif`))
+```
+
+
+Иначе, если флаг = 1, то считаем сумму импорта и экспорта и делаем новый столбец.
+```{r warning=FALSE}
+data <- data2
+data$ОбщСум <- export$Total_Sum + import$Total_Sum
+data <- data[,c("Регион", "ОбщСум")]
+```
+
+График для общей суммы экспорта и импорта
+```{r warning=FALSE}
+data |>
+    ggplot(mapping = aes(x = Регион, y = `ОбщСум`, fill = `ОбщСум`)) +
+    geom_col(color = 'black', size = 0.3, alpha=1) +
+    ggtitle("Общее сумма импорт + сумма экспорт") + 
+    ylab('млн. $') + coord_flip()
+```
+
+
+#### Задача 2
+### 1. Постановка задачи
+Даны два файла с данными data2.csv, data1.txt, в которых содержатся значения фенотипических признаков сортов сои. Количественные признаки: Height, Protein, Oil. Качественные признаки: GermBMatur, GrowthType, Polegaemost, MaturType. Идентификаторы сортов: V_1, V_2, …. Необходимо объединить data.frames по идентификаторам сортов. Исключить те сорта, для которых есть пропущенные значения. Для всех количественных величин нарисовать гистограммы и плотности распределения (на одном рисунке). Выбрать одну количественную и две качественные переменные . Нарисовать столбчатую диаграмму, в которой значениям на оси x соответствуют значениям одной качественной переменной и значения другой качественной переменной показаны при помощи цвета. Для количественной переменной нарисовать график плотности и гистограмму(в 2 слоя) на одном графике, и boxplot - на другом.
+
+### 2. Работа с данными
+Подключим необходимые библиотеки
+```{r warning=FALSE}
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+library (data.table)
+```
+
+Загрузим data1.txt и приведем к виду таблицы data2.csv
+```{r warning=FALSE}
+data1 <- read.table("C:/Users/reuto/Documents/R_lab3/data1.txt")
+new_names = data1$V1
+df_t <- transpose(data1)
+names(df_t) <- new_names
+df_t <- df_t[-1, ]
+```
+
+Загружаем вторую таблицу и сливаем вместе две таблицы
+```{r warning=FALSE}
+data2 <- read.csv("C:/Users/reuto/Documents/R_lab3/data2.csv")
+colnames(data2)[1] <- "Sample"
+data <- merge(df_t, data2, all.x = TRUE, all.y=TRUE)
+```
+
+Удалим те записи, что содержат NAs и выделим две подтаблицы, содержащие количественные и качественные признаки
+```{r warning=FALSE}
+data <- data[ , colSums(is.na(data))== 0 ]
+colich <- data[c(3,5,7),]
+cach <- data[c(2, 4),]
+```
+
+Отобразим графики, содержащие гистограмму и плотность распределния для каждого из количественных признаков
+Для признака Height:
+```{r warning=FALSE}
+colich_1 <- colich[1,]
+colich_1 <- colich_1 %>% pivot_longer(names_to = "V", values_to = "val", V_0:V_100)
+colich_1$val <- as.double(colich_1$val)
+ggplot(colich_1, mapping = aes(x=val)) + geom_histogram(aes(y=..density..),binwidth=5, colour="black", fill="grey")+
+  theme(axis.text.x = element_text(angle = 300)) + geom_density(alpha=.5, fill="red") + ggtitle("Height")
+```
+
+Для признака Oil:
+```{r warning=FALSE}
+colich_2 <- colich[2,]
+colich_2 <- colich_2 %>% pivot_longer(names_to = "V", values_to = "val", V_0:V_100)
+colich_2$val <- as.double(colich_2$val)
+ggplot(colich_2, mapping = aes(x=val)) + geom_histogram(aes(y=..density..),binwidth=5, colour="black", fill="grey")+
+  theme(axis.text.x = element_text(angle = 300)) + geom_density(alpha=.5, fill="red") + ggtitle("Oil")
+```
+
+Для признака Protein:
+```{r warning=FALSE}
+colich_3 <- colich[3,]
+colich_3 <- colich_3 %>% pivot_longer(names_to = "V", values_to = "val", V_0:V_100)
+colich_3$val <- as.double(colich_3$val)
+ggplot(colich_3, mapping = aes(x=val)) + geom_histogram(aes(y=..density..),binwidth=5, colour="black", fill="grey")+
+  theme(axis.text.x = element_text(angle = 300)) + geom_density(alpha=.5, fill="red") + ggtitle("Protein")
+```
+
+Пусть количественный будет Oil, качественные: GrowthType, MaturType
+Выведем столбчатую диаграмму для качественных признаков
+```{r warning=FALSE}
+new_names = cach$Sample
+df <- transpose(cach)
+names(df) <- new_names
+row.names(df)<-colnames(cach)
+df <- df[-1,]
+
+df <- df%>% pivot_longer(names_to = "CACH", values_to = "val", GrowthType:MaturType)
+ggplot(df, mapping = aes(x = val,y = CACH, fill = CACH)) +
+  geom_col(position = 'identity',alpha=0.5) +
+  ggtitle("GrowthType and MaturType")
+
+```
+
+Гистограмма и график плотности для количественного признака Oil:
+```{r warning=FALSE}
+ggplot(colich_2, mapping = aes(x=val)) + geom_histogram(aes(y=..density..),binwidth=5, colour="black", fill="grey")+
+  theme(axis.text.x = element_text(angle = 300)) + geom_density(alpha=.5, fill="red") + ggtitle("Oil")
+```
+
+boxplot для количественного признака Oil:
+```{r warning=FALSE}
+ggplot(colich_2, aes(x=val)) + geom_boxplot(colour="black")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

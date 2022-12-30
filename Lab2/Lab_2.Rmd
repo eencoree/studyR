@@ -1,0 +1,58 @@
+---
+title: "Лабораторная работа №2"
+author: "Реутов Александр"
+date: "2022-12-29"
+output: html_document
+---
+### 1. Постановка задачи
+Файл с данными Payment_and_value_of_Care-Hospital.csv содержит стоимость лечения заболеваний в больницах США. Необходимо для каждой из возможных услуг найти больницу, в которой эта услуга является самой дешёвой. Результат предоставить в виде списка. Помимо названия больницы, указать штат, округ и город в котором эта больница расположена.
+
+### 2. Работа с данными
+Загрузим файл Payment_and_value_of_Care-Hospital.csv
+
+```{r}
+data = read.csv("data/Payment_and_value_of_Care-Hospital.csv", header = TRUE)
+```
+
+Посмотрим какие колонки содержит таблица
+```{r}
+names(data)
+```
+Нас интересуют значения Payment. Посмотрим в каком виде они представлены
+```{r}
+unique(sapply(data, typeof))
+h = head(data$Payment, 50)
+h
+```
+Поле Payment имеет 2 типа: строковый и числовой. Чтобы правильно интерпретировать выражения, нужно убрать символ $ и запятую, а также убрать значения равные "Not Available", так как они не представляют интереса. Сделаем это:
+```{r}
+clean_data <- subset(data, data$Payment != "Not Available")
+clean_data$Payment <- as.numeric(gsub("[$,]","",clean_data$Payment))
+```
+Посмотрим, что числа действительно только числового типа и без лишних символов
+```{r}
+unique(sapply(clean_data$Payment, typeof))
+head(clean_data$Payment)
+```
+Выберем из таблицы услуги, которые предоставляются всеми больницами
+```{r}
+services <- unique(clean_data$Value.of.Care.Display.Name)
+print(services)
+```
+Для каждого значения списка services будем выбирать минимальное соответствующее ему значение колонки Payment из всей таблицы. Выберем нужные нам значения и запишем их в список hosps
+```{r}
+i = 1
+hosps <- list()
+for (elem in services){
+  illness <- subset(clean_data, clean_data$Value.of.Care.Display.Name == elem)
+  rec <- subset(illness, illness$Payment == min(illness$Payment))
+  hosps[[i]] <- subset(rec, select=c("Facility.Name", "State", "County.Name", "City", "Payment"))
+  cat("Показатели для ", elem,"\n")
+  print(hosps[i])
+  i <- i + 1
+}
+```
+Таким образом, дешевой больницей лечащей сердечные заболевания(приступы) является HIMA SAN PABLO BAYAMON
+Сердечную недостаточность - GUAM MEMORIAL  HOSPITAL AUTHORITY
+Пневмонию - WHITFIELD MEDICAL SURGICAL HOSPITAL
+Замена коленного сустава - SPRINGFIELD HOSPITAL
